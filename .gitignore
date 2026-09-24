@@ -1,0 +1,29 @@
+# 密钥与运行态（勿提交）
+.env
+vendor/db_env/.env
+vendor/market_data_prep/.env
+vendor/case_a_board_prep/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+
+# 运行产出 / 缓存（源码仓不跟踪）
+outputs/
+**/outputs/
+data/cache/
+vendor/market_data_prep/outputs/
+morning_brief/outputs/
+
+# 本地模型与大文件（按需用 Git LFS 或制品库）
+# models/*.pth
+
+# 系统杂项
+.DS_Store
+Thumbs.db
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

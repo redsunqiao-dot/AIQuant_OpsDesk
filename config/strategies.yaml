@@ -1,0 +1,13 @@
+# 实盘监控 -- 策略路由表 (由 /live 页面写入)
+# 修改后, 在页面点 '应用策略配置' 即可热加载, 无需重启
+# 可选: macd_5min / macd_1d / dual_ma_5min / ma20_hold / multi_factor_top /
+#       dragon_picker / grid_classic / chanlun / turtle_donchian / dqn / ml_prob /
+#       rsi_reversal / boll_revert / bias_revert
+
+default: macd_5min
+per_stock:
+  600684.SH: ml_prob
+  601019.SH: bias_revert
+  601928.SH: boll_revert
+  301052.SZ: multi_factor_top
+  002188.SZ: boll_revert

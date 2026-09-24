@@ -1,0 +1,22 @@
+{
+  "overall_sentiment": "谨慎",
+  "fear_greed_index": 45,
+  "positive_count": 5,
+  "negative_count": 4,
+  "neutral_count": 2,
+  "top_themes": [
+    "长城汽车财务表现",
+    "汽车行业资金流动",
+    "MCU芯片概念"
+  ],
+  "risk_alerts": [
+    "长城汽车净利润下降",
+    "汽车行业资金净流出",
+    "主力资金撤离汽车板块"
+  ],
+  "opportunity_hints": [
+    "MCU芯片概念上涨",
+    "长城汽车回购动作"
+  ],
+  "summary": "市场情绪偏谨慎，行业资金流出与业绩下滑引发担忧，但部分个股回购和芯片概念带来积极信号。"
+}

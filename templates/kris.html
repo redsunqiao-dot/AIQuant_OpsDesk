@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Kris 风控 -- AI 量化系统{% endblock %}
+
+{% block content %}
+<div x-data="krisApp()" x-init="refresh()">
+    <div class="card mb-3">
+        <div class="card-header">
+            <div>
+                <div class="card-title">Kris 风控官</div>
+                <div class="text-xs text-gray-500 font-normal mt-0.5">
+                    8 条规则一票否决: 单笔上限 / 价格偏离 / ST黑名单 / ATR仓位 / 日熔断 / ATR止损 / 事件关键词 / 宏观VIX
+                </div>
+            </div>
+            <button class="btn btn-secondary btn-sm" @click="refresh()" :disabled="busy">刷新</button>
+        </div>
+        <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm" x-show="summary">
+            <div>
+                <div class="text-xs text-gray-500">审批总数</div>
+                <div class="text-lg font-semibold" x-text="summary?.total ?? '-'"></div>
+            </div>
+            <div>
+                <div class="text-xs text-gray-500">通过 / 警告 / 拒绝</div>
+                <div class="text-lg font-semibold"
+                     x-text="(summary?.approved ?? 0) + ' / ' + (summary?.warned ?? 0) + ' / ' + (summary?.rejected ?? 0)"></div>
+            </div>
+            <div>
+                <div class="text-xs text-gray-500">单笔上限</div>
+                <div class="text-lg font-semibold"
+                     x-text="summary?.max_order_amount != null ? Number(summary.max_order_amount).toLocaleString() + ' 元' : '-'"></div>
+            </div>
+            <div>
+                <div class="text-xs text-gray-500">宏观 VIX</div>
+                <div class="text-lg font-semibold"
+                     x-text="(summary?.macro?.vix != null ? summary.macro.vix : '未灌入') +
+                             (summary?.macro?.risk_level ? ' (' + summary.macro.risk_level + ')' : '')"></div>
+            </div>
+        </div>
+        <div class="px-4 pb-3 text-xs text-gray-500"
+             x-text="summary?.circuit_breaker
+                     ? ('熔断: ' + (summary.circuit_breaker.is_halted ? '已熔断 -- ' + (summary.circuit_breaker.halt_reason || '') : '正常'))
+                     : ''"></div>
+        <div class="px-4 pb-4 border-t border-gray-100 pt-3">
+            <div class="text-sm font-medium mb-1">灌入宏观 VIX</div>
+            <div class="text-xs text-gray-500 mb-2">
+                未灌入时宏观门控跳过。参考: 小于20正常 / 20-25焦虑降仓 / 25-35恐慌 / 大于等于35极度恐慌 / 大于等于50暂停开仓
+            </div>
+            <div class="flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">VIX 数值</label>
+                    <input class="form-control" style="width:110px" type="number" step="0.1" min="0"
+                           x-model.number="vixInput" placeholder="18.5">
+                </div>
+                <button class="btn btn-primary btn-sm" @click="setVix()" :disabled="busy">灌入</button>
+                <button class="btn btn-secondary btn-sm" @click="refreshQvix()" :disabled="busy"
+                        title="akshare 拉取 50ETF QVIX">拉取 QVIX</button>
+                <button class="btn btn-secondary btn-sm" @click="vixInput = 18.5; setVix()" :disabled="busy"
+                        title="常用正常档">填 18.5</button>
+                <button class="btn btn-secondary btn-sm" @click="vixInput = 28; setVix()" :disabled="busy"
+                        title="恐慌档, 仓位系数下降">填 28</button>
+                <span class="text-xs text-gray-500"
+                      x-show="summary?.macro?.coefficient != null"
+                      x-text="'当前仓位系数: ' + Math.round((summary.macro.coefficient || 0) * 100) + '%'"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">
+            <div class="card-title">试审批 (不下单)</div>
+        </div>
+        <div class="p-4 flex flex-wrap items-end gap-2">
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">代码</label>
+                <input class="form-control" style="width:130px" x-model="form.code" placeholder="600519.SH">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">方向</label>
+                <select class="form-control" style="width:90px" x-model="form.side">
+                    <option value="buy">buy</option>
+                    <option value="sell">sell</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">数量</label>
+                <input class="form-control" style="width:100px" type="number" x-model.number="form.quantity">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">价格</label>
+                <input class="form-control" style="width:100px" type="number" step="0.01" x-model.number="form.price">
+            </div>
+            <button class="btn btn-primary btn-sm" @click="tryApprove()" :disabled="busy">试审批</button>
+        </div>
+        <div class="px-4 pb-4 text-sm" x-show="trial">
+            <div class="mb-1">
+                <span class="badge"
+                      :class="(trial && trial.kris && trial.kris.is_approved) ? 'badge-success' : 'badge-danger'"
+                      x-text="trial?.kris?.decision"></span>
+                <span class="ml-2" x-text="trial?.kris?.rule_name"></span>
+            </div>
+            <div class="text-gray-700" x-text="trial?.kris?.reason"></div>
+            <div class="text-xs text-gray-500 mt-1"
+                 x-text="'调整后数量: ' + (trial?.adjusted_quantity ?? '-') +
+                         ' | ATR: ' + (trial?.portfolio?.atr ?? '-')"></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">最近审批日志</div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="text-xs text-gray-500 border-b">
+                    <tr>
+                        <th class="text-left p-2">时间</th>
+                        <th class="text-left p-2">标的</th>
+                        <th class="text-left p-2">方向</th>
+                        <th class="text-right p-2">数量</th>
+                        <th class="text-left p-2">决策</th>
+                        <th class="text-left p-2">原因</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="(row, i) in (audit || []).slice().reverse()" :key="i">
+                        <tr class="border-b border-gray-100">
+                            <td class="p-2 whitespace-nowrap" x-text="row.time"></td>
+                            <td class="p-2" x-text="row.stock"></td>
+                            <td class="p-2" x-text="row.direction"></td>
+                            <td class="p-2 text-right" x-text="row.adjusted_quantity ?? row.quantity"></td>
+                            <td class="p-2" x-text="row.decision"></td>
+                            <td class="p-2 text-gray-600" x-text="row.reason"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            <div class="p-3 text-xs text-gray-400" x-show="!(audit && audit.length)">暂无审计记录 -- 跑模拟盘或点试审批后出现</div>
+        </div>
+    </div>
+</div>
+
+<script>
+function krisApp() {
+    return {
+        busy: false,
+        summary: null,
+        audit: [],
+        trial: null,
+        vixInput: 18.5,
+        form: { code: '600519.SH', side: 'buy', quantity: 100, price: 1700 },
+        async refresh() {
+            if (this.busy) return;
+            this.busy = true;
+            try {
+                this.summary = await App.get('/api/kris/summary');
+                const a = await App.get('/api/kris/audit?limit=50');
+                this.audit = (a && a.items) || [];
+                if (this.summary?.macro?.vix != null) {
+                    this.vixInput = Number(this.summary.macro.vix);
+                }
+            } catch (e) {
+                App.toast('刷新失败: ' + e, 'danger');
+            } finally {
+                this.busy = false;
+            }
+        },
+        async setVix() {
+            if (this.busy) return;
+            const vix = Number(this.vixInput);
+            if (!(vix >= 0) || Number.isNaN(vix)) {
+                App.toast('请输入有效 VIX 数值', 'danger');
+                return;
+            }
+            this.busy = true;
+            try {
+                const r = await App.post('/api/kris/vix', { vix: vix });
+                if (r && r.ok) {
+                    App.toast('已灌入 VIX=' + vix + ' (' + (r.risk_level || '') + '), 仓位系数 '
+                              + Math.round((r.coefficient || 0) * 100) + '%', 'success');
+                    this.busy = false;
+                    await this.refresh();
+                } else {
+                    App.toast((r && r.message) || '灌入失败', 'danger');
+                }
+            } catch (e) {
+                App.toast('灌入失败: ' + e, 'danger');
+            } finally {
+                this.busy = false;
+            }
+        },
+        async refreshQvix() {
+            if (this.busy) return;
+            this.busy = true;
+            try {
+                const r = await App.post('/api/kris/vix/refresh', {});
+                if (r && r.ok) {
+                    this.vixInput = Number(r.vix);
+                    App.toast('已拉取 QVIX=' + r.vix + ' (' + (r.date || '') + ') '
+                              + (r.risk_level || ''), 'success');
+                    this.busy = false;
+                    await this.refresh();
+                } else {
+                    App.toast((r && r.message) || '拉取 QVIX 失败', 'danger');
+                }
+            } catch (e) {
+                App.toast('拉取 QVIX 失败: ' + e, 'danger');
+            } finally {
+                this.busy = false;
+            }
+        },
+        async tryApprove() {
+            if (this.busy) return;
+            this.busy = true;
+            try {
+                const r = await App.post('/api/kris/approve', this.form);
+                this.trial = r;
+                if (r && r.ok) {
+                    App.toast('Kris: ' + (r.kris?.decision || ''), r.kris?.is_approved ? 'success' : 'danger');
+                    this.busy = false;
+                    await this.refresh();
+                } else {
+                    App.toast((r && r.message) || '试审批失败', 'danger');
+                }
+            } catch (e) {
+                App.toast('试审批失败: ' + e, 'danger');
+            } finally {
+                this.busy = false;
+            }
+        },
+    };
+}
+</script>
+{% endblock %}

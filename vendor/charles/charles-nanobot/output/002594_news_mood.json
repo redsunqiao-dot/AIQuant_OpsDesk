@@ -1,0 +1,23 @@
+{
+  "overall_sentiment": "中性",
+  "fear_greed_index": 50,
+  "positive_count": 5,
+  "negative_count": 3,
+  "neutral_count": 2,
+  "top_themes": [
+    "比亚迪业绩与技术发展",
+    "资金流动情况",
+    "高价股格局变化"
+  ],
+  "risk_alerts": [
+    "汽车板块资金流出",
+    "多家公司股价下跌",
+    "宁德时代减持股份"
+  ],
+  "opportunity_hints": [
+    "比亚迪技术布局机会",
+    "钠电技术研发潜力",
+    "辅助驾驶车型数据表现"
+  ],
+  "summary": "市场情绪整体中性，比亚迪多项正面消息支撑信心，但部分公司股价下跌和资金流出带来压力。"
+}

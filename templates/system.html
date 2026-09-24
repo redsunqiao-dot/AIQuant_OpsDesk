@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}系统状态 -- AI 量化系统{% endblock %}
+
+{% block content %}
+<div x-data="systemApp()" x-init="init()">
+
+    <button class="help-btn-floating" @click="showHelp = true" title="使用说明">?</button>
+
+    <!-- 使用说明 modal -->
+    <div class="modal-overlay" x-show="showHelp" x-cloak @click.self="showHelp = false">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">系统状态 -- 使用说明</div>
+                <button class="modal-close" @click="showHelp = false">×</button>
+            </div>
+            <div class="modal-body">
+                <h4>这个 Tab 是干嘛的</h4>
+                <p>系统级运维面板, 一眼看出"哪个组件挂了"。还有标准 cron 时点参考。</p>
+
+                <h4>健康检查</h4>
+                <ul>
+                    <li><b>Python 版本</b> -- 运行环境</li>
+                    <li><b>MySQL 行情库</b> -- 读根目录 <code>.env</code> / <code>vendor/db_env</code> 连 <code>trade_stock_daily</code></li>
+                    <li><b>日 K 抽检</b> -- 茅台近月日线是否可取</li>
+                    <li><b>DASHSCOPE_API_KEY</b> -- Charles / 团队 LLM</li>
+                    <li><b>券商桥</b> -- 默认 file_bridge 账户快照；或 xtquant + QMT_PATH</li>
+                    <li><b>Kris / 策略注册表 / DQN 模型</b> -- 风控与研究策略是否就绪</li>
+                    <li><b>live_state.json / 晨报</b> -- 运行态与历史产出</li>
+                </ul>
+
+                <h4>定时任务</h4>
+                <p>scheduler.py 默认 4 个时点 (周一到周五):</p>
+                <ul>
+                    <li><code>07:40</code> 数据增量（<code>vendor/market_data_prep</code> 下的 <code>run_daily.py</code>）</li>
+                    <li><code>08:30</code> 晨会简报（<code>run_morning_task.py</code>，含回测匹配写入监控池）</li>
+                    <li><code>09:30</code> 开盘启动 dry-run 主循环</li>
+                    <li><code>14:55</code> 收盘前 5 分钟停主循环</li>
+                </ul>
+                <p class="text-xs text-gray-500">
+                    实现见 <code>scheduler.py</code>（APScheduler + cron）。
+                    跟 web 分进程跑: <code>python scheduler.py</code>。
+                    Windows schtasks: <code>AI_quant_CASEA_daily</code> / <code>AI_quant_morning_brief</code>。
+                </p>
+
+                <h4>典型场景</h4>
+                <div class="example-block">
+                    <b>场景 1 (排错)</b>: 投研对话不出回复 → 查"DASHSCOPE_API_KEY" 是不是 OK<br/><br/>
+                    <b>场景 2 (上线前自检)</b>: 启动 cron 调度前先点"健康检查", 全 OK 再跑
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <!-- 健康检查 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">健康检查</div>
+                <button class="btn btn-primary btn-sm" @click="check()" :disabled="checking">
+                    <span x-show="!checking">健康检查</span>
+                    <span x-show="checking">检查中...</span>
+                </button>
+            </div>
+            <template x-if="!health || health.length === 0">
+                <div class="text-gray-400 text-sm py-6 text-center">点右上按钮跑一次</div>
+            </template>
+            <template x-if="health && health.length > 0">
+                <table class="app-table">
+                    <thead><tr><th>项</th><th>值</th><th>状态</th></tr></thead>
+                    <tbody>
+                        <template x-for="r in health" :key="r.item">
+                            <tr>
+                                <td x-text="r.item"></td>
+                                <td class="text-xs text-gray-600 font-mono" x-text="r.value"></td>
+                                <td>
+                                    <span class="badge"
+                                          :class="r.status === 'OK' ? 'badge-success' :
+                                                  r.status === 'WARN' ? 'badge-warning' : 'badge-danger'"
+                                          x-text="r.status"></span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </template>
+        </div>
+
+        <!-- 定时任务 cron -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">定时任务</div>
+                <div class="card-subtitle">scheduler.py 默认 4 个时点 (周一到周五)</div>
+            </div>
+            <table class="app-table">
+                <thead><tr>
+                    <th>时间</th><th>动作</th><th>说明</th>
+                </tr></thead>
+                <tbody>
+                    <tr><td class="num">07:40</td><td>数据增量</td>
+                        <td>按 <code>vendor/market_data_prep</code>（或 <code>CASE_A_BOARD_DATA_PREP_DIR</code>）调用 <code>run_daily.py</code> 拉 K 线 + 板块指数</td></tr>
+                    <tr><td class="num">08:30</td><td>晨会简报</td>
+                        <td>跑 <code>run_morning_task.py</code>: 多因子选股 + 回测匹配策略写入监控池</td></tr>
+                    <tr><td class="num">09:30</td><td>启动主循环</td>
+                        <td>开盘启动 dry-run 模拟盘 (每分钟巡检一次)</td></tr>
+                    <tr><td class="num">14:55</td><td>停止主循环</td>
+                        <td>收盘前 5 分钟停, 避免空转</td></tr>
+                </tbody>
+            </table>
+            <div class="text-xs text-gray-500 mt-3 leading-relaxed">
+                <b>启动方法</b> (与 web 工作台分两个进程, 互不影响):<br/>
+                <code class="text-xs" style="color:#7c3aed;">
+                    cd AIQuant_OpsDesk_DEV<br/>
+                    python scheduler.py
+                </code><br/>
+                <span class="text-gray-400">单文件 APScheduler，周一到周五自动触发，Ctrl+C 退出；想立刻验证可加 <code>--simulate</code>。
+                Windows schtasks: <code>AIQuant_OpsDesk_PROD_DailyData</code>(07:40)、<code>AIQuant_OpsDesk_PROD_MorningBrief</code>(08:30)。</span>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function systemApp() {
+    return {
+        showHelp: false,
+        health: null,
+        checking: false,
+        async init() { await this.check(); },
+        async check() {
+            this.checking = true;
+            this.health = await App.get('/api/system/health');
+            this.checking = false;
+        },
+    }
+}
+</script>
+{% endblock %}
